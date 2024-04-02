@@ -44,3 +44,6 @@ else: # Se imprimen las asignaturas que se deben repetir
     print("Las asignaturas por repetir son: ")
     for i in matRep:
         print("- "+i)
+
+
+# Esta es una prueba para ver si se actualiza en github
