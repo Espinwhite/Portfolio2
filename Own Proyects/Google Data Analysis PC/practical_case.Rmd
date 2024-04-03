@@ -1,0 +1,268 @@
+---
+title: "Informe final - Caso práctico 1"
+author: "Alex Espinosa"
+date: "2023-12-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Con la finalidad de hacer que los usuarios ocasionales se conviertan en miembros de Cyclistic, se busca conocer cuál es la diferencia entre los socios anuales y los ciclistas ocasionales, para ahí definir una nueva estrategia de marketing que ayude a lograr esta conversión.
+
+Para lograr lo anterior vamos a utilizar R para analizar los datos de los registros del 2023 de la empresa.
+
+Las fuentes de datos se ubicaron en un índice donde la propia empresa tiene almacenados los archivos de datos por mes de cada año.
+
+## Importación de librerías
+
+```{r libraries, warning=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+```
+
+Vamos a definir dónde están alojados los datos descargados, los cuales fueron extraídos de los archivos zip y se almacenaron en la carpeta "Datos 2"
+
+```{r pressure}
+setwd("C:/Users/alexe/OneDrive/Documentos/Proyecto Final R/Datos 2")
+```
+
+Ahora, vamos a leer cada uno de estos archivos y los vamos a almacenar en una variable
+
+```{r readcsv}
+dec_2022 <- read_csv("202212-divvy-tripdata.csv")
+jan_2023 <- read_csv("202301-divvy-tripdata.csv")
+feb_2023 <- read_csv("202302-divvy-tripdata.csv")
+mar_2023 <- read_csv("202303-divvy-tripdata.csv")
+apr_2023 <- read_csv("202304-divvy-tripdata.csv")
+may_2023 <- read_csv("202305-divvy-tripdata.csv")
+jun_2023 <- read_csv("202306-divvy-tripdata.csv")
+jul_2023 <- read_csv("202307-divvy-tripdata.csv")
+aug_2023 <- read_csv("202308-divvy-tripdata.csv")
+sep_2023 <- read_csv("202309-divvy-tripdata.csv")
+oct_2023 <- read_csv("202310-divvy-tripdata.csv")
+nov_2023 <- read_csv("202311-divvy-tripdata.csv")
+```
+
+En el presente caso, solo se descargaron los datos correspondientes al último año, considerando que, como no se tienen los datos del mes de diciembre de 2023, también se incluye en el análisis los datos de diciembre del 2022. Cada archivo comprimido contiene hojas de cálculo donde se almacenó información de todos los viajes durante ese mes como el id de cada viaje (ride_id), el tipo de bicicleta utilizada (rideable_type), la fecha y hora de inicio (started_at) y del final del viaje (ended_at), ell tipo de miembro (member_casual) y las coordenadas de los inicios y finales del viaje. La licencia para acceder a dichos datos ha sido proporcionada por Motivate International Inc. La información personal de los usuarios en cuestión no fue utilizada, permitiendo el anonimato a cada uno. Solo se utilizó la información correspondiente a los viajes de cada usuario.z
+
+Podemos confirmar que los datos son actualizados y vienen de una fuente confiable, que es la propia base de datos de la compañía. Aunque es cierto que en algunos casos existen datos faltantes. Sobre todo en el caso de las estaciones finales e iniciales, tanto los ids como los nombres.
+
+Para combinar todos los archivos de datos en un solo marco de datos es necesario verificar que cada uno de los títulos de las columnas concuerde.
+
+```{r eval=FALSE, include=FALSE}
+str(dec_2022)
+str(jan_2023)
+str(feb_2023)
+str(mar_2023)
+str(apr_2023)
+str(may_2023)
+str(jun_2023)
+str(jul_2023)
+str(aug_2023)
+str(sep_2023)
+str(oct_2023)
+str(nov_2023)
+```
+
+Como podemos ver, todas las columnas concuerdan en nombre y formato de datos. Con esto ya podemos a combinar todos los archivos de datos.
+
+```{r all_trips}
+all_trips <- bind_rows(dec_2022, jan_2023, feb_2023, mar_2023, apr_2023, may_2023, jun_2023, jul_2023, aug_2023, sep_2023, oct_2023, nov_2023)
+
+```
+
+Para poder hacer un mejor filtrado o análisis específicos orientados en ciertos meses o fechas, vamos a separar las fechas en columnas: una para el día, otra para el mes y otro para el año
+
+```{r separate date in columns}
+all_trips$date <- as.Date(all_trips$started_at) #The default format is yyyy-mm-dd
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+```
+
+Podemos utilizar la fecha de inicio del viaje y del final para obtener información sobre cuánto tiempo fueron utilizadas las bicicletas. Para ello vamos a agregar una nueva columna (ride_length) donde nos muestre esta información en segundos. La función difftime en R devuelve un objeto de clase difftime, que representa la diferencia de tiempo entre dos fechas o momentos. Con esto en mente convertimos dichos valores a numéricos.
+
+```{r ride_length}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length)) # Convertir a valores numéricos
+```
+
+## Limpieza de datos
+
+Ahora vamos a verificar que evidentemente todos los resultados sean valores numéricos.
+
+```{r isnumeric_ridelength}
+is.numeric(all_trips$ride_length) # Con esto se verifica que son numéricos
+```
+
+Además, verificamos si hay números negativos en la columna 'ride_length'.
+
+```{r}
+hay_negativos <- any(all_trips$ride_length < 0)
+print(hay_negativos)
+```
+
+También vamos a verficicar si es que existen datos duplicados en todo el conjunto de datos.
+
+```{r anyduplicated}
+hay_duplicados <- any(duplicated(all_trips))
+print(hay_duplicados)
+
+```
+
+Con esto en mente debemos limpiar la base de datos de estos valores negativos, pero al mismo tiempo esta limpieza se hace creando un marco de datos con los datos de dicha columna limpios, ya que no serán útiles para nuestro análisis.
+
+```{r ride_length cleaning}
+all_trips_v2 <- all_trips[!(all_trips$ride_length<0),]
+```
+
+## Análisis descriptivo
+
+Podemos empezar a analizar la frecuencia entre solicitudes de servicios entre miembros y usuarios casuales, para darnos una idea de cuál es la diferencia entre ambos tipos de usuarios.
+
+```{r freq_users}
+freq_usuario <- all_trips_v2 %>%
+  group_by(member_casual) %>%
+  summarise(frequency = n())
+
+ggplot(freq_usuario, aes(x = member_casual, y = frequency, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Frecuencia de Usuarios",
+       x = "Tipo de Usuario",
+       y = "Frecuencia",
+       fill ="Tipo de usuario")
+```
+
+Tal y como podemos ver es más frecuente que los miembros soliciten más bicicletas que los que usuarios casuales usando el servicio.
+
+También podemos apreciar cuáles son las estaciones de inicio populares por tipo de usario.
+
+```{r popular start_station_name, message=FALSE, warning=FALSE}
+# Estaciones de inicio populares por tipo de usuario
+estaciones_inicio_populares <- all_trips_v2 %>%
+  filter(!is.na(start_station_name)) %>%
+  group_by(member_casual, start_station_name) %>%
+  summarise(num_trips = n()) %>%
+  arrange(desc(num_trips)) %>%
+  filter(row_number() <= 5)
+
+# Visualización de estaciones de inicio populares
+ggplot(estaciones_inicio_populares, aes(x = start_station_name, y = num_trips, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Estaciones de Inicio Populares por Tipo de Usuario",
+       x = "Estación de Inicio",
+       y = "Número de Viajes",
+       fill = "Tipo de Usuario") +  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+Apreciamos que la estación de inicio que tiene mayor número de viajes, de usuarios **casuales**, es la de Streeter Dr & Grand Ave, seguido por la de DuSable Lake Shore Dr & Monroe St. Por otro lado, tanto, los ***miembros*** utilizan más las de Clinton St & Washington Blvd y Kingsbury St & Kinzie St.
+
+### Análisis de datos generales
+
+Analizando los datos generales, podemos ver cuál es el promedio de la duración de los viajes (en segundos),
+
+```{r mean_g}
+mean(all_trips_v2$ride_length) # Promedio de la duración de los viajes
+```
+
+cuál es la duración de los viajes más común (en segundos)
+
+```{r mode_g}
+# Create the function.
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+getmode(all_trips_v2$ride_length)
+```
+
+el viaje más largo (en segundos)
+
+```{r max_g}
+max(all_trips_v2$ride_length) # Este es el viaje más largo
+```
+
+y el viaje más corto (en segundos)
+
+```{r min_g}
+min(all_trips_v2$ride_length) # Este es el viaje más corto
+```
+
+### Análisis por tipo de usuario
+
+Podemos obtener los datos del análisis previo que se hizo de forma general, pero ahora conforme a cada tipo de usuario.
+
+```{r echo=TRUE}
+# Calcular media, máximo y mínimo por tipo de usuario
+media <- aggregate(ride_length ~ member_casual, data = all_trips_v2, FUN = mean)
+maximo <- aggregate(ride_length ~ member_casual, data = all_trips_v2, FUN = max)
+minimo <- aggregate(ride_length ~ member_casual, data = all_trips_v2, FUN = min)
+
+# Renombrar las columnas
+colnames(media) <- c("Tipo de usuario", "Promedio de duración del viaje (s)")
+colnames(maximo) <- c("Tipo de usuario", "Viaje más largo (s)")
+colnames(minimo) <- c("Tipo de usuario", "Viaje más corto (s)")
+
+# Combinar los resultados en un solo marco de datos
+resumen_tipo_usuario <- merge(merge(media, maximo, by = "Tipo de usuario"), minimo, by = "Tipo de usuario")
+
+# Mostrar el resultado
+print(resumen_tipo_usuario)
+```
+
+Tal como podemos observar, el promedio los viajes de los usuarios casuales son mayores que los miembros. De la misma forma, el viaje más largo corresponde al de los usuarios casuales.
+
+### Análisis de viajes por tipo de usuario y dia de la semana
+
+Finalmente, podemos hacer un análisis de los datos por tipo de usuario calculando tanto el número de viajes como la duración de los viajes en cada día de la semana.
+
+```{r type_weekday, message=FALSE, warning=FALSE}
+type_weekday <- all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%
+  group_by(member_casual, weekday) %>%  # Agrupa el tipo de usuario y los días de la semana
+  summarise(number_of_rides = n(),average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)
+```
+
+Mostramos el gráfico de barras del número de viajes por día
+
+```{r number_of_rides}
+ggplot(type_weekday, aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Número de viajes por día de la semana",
+       x = "Día de la Semana",
+       y = "Número de Viajes",
+       fill = 'Tipo de usuario')
+```
+
+En el gráfico, podemos ver que los **miembros** presentan mayor número de viajes los días jueves, miércoles y martes. Mientras que los usuarios **casuales** presentan mayor número de viajes los sábados y domingos.
+
+Esto nos podría decir que tanto los miembros son los que mayores viajes toman entre semana, ya que probablemente se transporten para ir al trabajo o a la escuela. Mientras que en el caso de los usuarios casuales, requieren mayores viajes en fines de semana, seguramente para realizar actividades recreativas.
+
+De la misma forma, ahora mostramos un gráfico de barras de la duración de los viajes por día de la semana y por tipo de usuario
+
+```{r average_duration}
+ggplot(type_weekday, aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Duración de viaje promedio por días",
+       x = "Día de la Semana",
+       y = "Tiempo promedio de viaje",
+       fill = 'Tipo de usuario')
+```
+
+Finalmente, en esta gráfica podemos ver que, a diferencia de la anterior, los usuarios **casuales** tienen un mayor tiempo promedio de viaje con respecto a los **miembros**. Además, en ambos grupos el mayor tiempo está presente en los fines de semana (sábado y domingo) lo cuál, reforzaría la idea de que el servicio en esos días está mas concurrido y se utiliza para actividades recreativas.
+
+## Recomendaciones
+
+-   A pesar de que sea más frecuente que un miembro soliciten bicicletas, los viajes de los usuarios casuales tienden a durar más en fines de semana. Es por ello que se debe focalizar en implementar algún elemento a la experiencia que mejore la experiencia en los viajes largos para los usuarios, con el fin de atraerlos a la membresía.
+
+-   Agregar planes para conmutar que permitan que los usuarios estén interesados en tomar bicicletas para ir al trabajo. Además, agregar planes o promociones exclusivas para los miembros al realizar actividades recreativas.
+
+-   Considerando cuáles son las estaciones iniciales más concurridas, se puede considerar implementar más unidades de bicicleta o incluso hacer descuentos si tomas una bicicleta en alguna de las estaciones.
